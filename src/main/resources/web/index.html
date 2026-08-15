@@ -70,13 +70,13 @@
         <div class="connect__qr">
             <span class="connect__label">Or scan to open</span>
             <div class="scanframe" id="qr">
-                <span class="scanframe__placeholder">QR</span>
+                <span class="scanframe__placeholder">
+                    <img src="/qr" alt="QR code to open this page" class="scanframe__img">
+                </span>
             </div>
         </div>
 
     </section>
-
-    <div class="divider"><span>shared files</span></div>
 
     <div class="files" id="files"></div>
 
@@ -155,7 +155,6 @@
             .map(name => `
                 <div class="file-row">
                     <a class="download-link" href="/download?name=${encodeURIComponent(name)}">${name}</a>
-                    <a class="qr-link" href="/qr?name=${encodeURIComponent(name)}" target="_blank">QR</a>
                 </div>
             `)
             .join('');
