@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>LAN Share</title>
+
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<main class="container">
+
+    <header class="header">
+        <h1>LAN Share</h1>
+        <p>Transfer files between devices on the same network.</p>
+    </header>
+
+
+    <section class="upload">
+
+        <h2>Upload a file</h2>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+
+            <input
+                    type="file"
+                    id="file"
+                    name="file"
+                    required
+            >
+
+            <label for="file">
+                Choose a file
+            </label>
+
+            <button type="submit">
+                Upload
+            </button>
+
+        </form>
+
+    </section>
+
+
+    <section class="connect">
+
+        <div>
+            <h2>Connect another device</h2>
+            <p>Scan the QR code or open the address below.</p>
+
+            <div class="url">
+                http://10.22.19.141:8080/
+            </div>
+        </div>
+
+        <div class="qr">
+            <!-- Java will eventually insert the QR image here -->
+            <div class="qr-placeholder">
+                QR
+            </div>
+        </div>
+
+    </section>
+
+
+    <footer>
+        <span>Running locally</span>
+        <span>•</span>
+        <span>Port 8080</span>
+    </footer>
+
+</main>
+
+</body>
+</html>
+```
