@@ -25,6 +25,5 @@ public class Main {
         server.start();
 
         System.out.println("Server started on port 8080");
-        System.out.println("Open: http://localhost:8080");
     }
 }
