@@ -5,12 +5,13 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.util.Enumeration;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Handler {
 
-    private static final Path FILE =
-            Path.of("shared/uploaded-file");
+    private static final Path SHARED_DIR = Path.of("shared");
 
     public static void register(HttpServer server) {
 
@@ -18,6 +19,7 @@ public class Handler {
         server.createContext("/style.css", Handler::style);
         server.createContext("/upload", Handler::upload);
         server.createContext("/download", Handler::download);
+        server.createContext("/files", Handler::files);
         server.createContext("/info", Handler::info);
     }
 
@@ -88,11 +90,19 @@ public class Handler {
             return;
         }
 
-        Files.createDirectories(FILE.getParent());
+        String rawName = queryParam(exchange, "name");
+
+        String fileName = (rawName == null || rawName.isBlank())
+                ? "file-" + System.currentTimeMillis()
+                : sanitizeFileName(rawName);
+
+        Files.createDirectories(SHARED_DIR);
+
+        Path target = SHARED_DIR.resolve(fileName);
 
         try (
                 InputStream input = exchange.getRequestBody();
-                OutputStream output = Files.newOutputStream(FILE)
+                OutputStream output = Files.newOutputStream(target)
         ) {
             input.transferTo(output);
         }
@@ -108,34 +118,86 @@ public class Handler {
             return;
         }
 
-        if (!Files.exists(FILE)) {
+        String rawName = queryParam(exchange, "name");
+
+        if (rawName == null || rawName.isBlank()) {
+            sendStatus(exchange, 400);
+            return;
+        }
+
+        Path target = SHARED_DIR.resolve(sanitizeFileName(rawName));
+
+        if (!Files.exists(target)) {
             sendStatus(exchange, 404);
             return;
         }
 
+        String contentType = Files.probeContentType(target);
+
         exchange.getResponseHeaders().set(
                 "Content-Type",
-                "application/octet-stream"
+                contentType != null ? contentType : "application/octet-stream"
         );
 
         exchange.getResponseHeaders().set(
                 "Content-Disposition",
                 "attachment; filename=\"" +
-                        FILE.getFileName() +
+                        target.getFileName() +
                         "\""
         );
 
         exchange.sendResponseHeaders(
                 200,
-                Files.size(FILE)
+                Files.size(target)
         );
 
         try (
-                InputStream input = Files.newInputStream(FILE);
+                InputStream input = Files.newInputStream(target);
                 OutputStream output = exchange.getResponseBody()
         ) {
             input.transferTo(output);
         }
+    }
+
+    private static void files(HttpExchange exchange)
+            throws IOException {
+
+        if (!exchange.getRequestMethod().equals("GET")) {
+            sendStatus(exchange, 405);
+            return;
+        }
+
+        Files.createDirectories(SHARED_DIR);
+
+        List<String> names;
+
+        try (Stream<Path> stream = Files.list(SHARED_DIR)) {
+            names = stream
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
+
+        StringBuilder json = new StringBuilder("[");
+
+        for (int i = 0; i < names.size(); i++) {
+            if (i > 0) {
+                json.append(",");
+            }
+            json.append("\"")
+                    .append(names.get(i).replace("\"", ""))
+                    .append("\"");
+        }
+
+        json.append("]");
+
+        exchange.getResponseHeaders().set(
+                "Content-Type",
+                "application/json; charset=UTF-8"
+        );
+
+        sendText(exchange, 200, json.toString());
     }
 
     private static void info(HttpExchange exchange)
@@ -162,40 +224,51 @@ public class Handler {
 
     private static String localLanAddress() {
 
-        try {
-            Enumeration<NetworkInterface> interfaces =
-                    NetworkInterface.getNetworkInterfaces();
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+            return socket.getLocalAddress().getHostAddress();
+        } catch (IOException e) {
+            return "localhost";
+        }
+    }
 
-            while (interfaces.hasMoreElements()) {
+    private static String queryParam(HttpExchange exchange, String key) {
 
-                NetworkInterface network =
-                        interfaces.nextElement();
+        String query = exchange.getRequestURI().getQuery();
 
-                if (!network.isUp()
-                        || network.isLoopback()
-                        || network.isVirtual()) {
-                    continue;
-                }
-
-                Enumeration<InetAddress> addresses =
-                        network.getInetAddresses();
-
-                while (addresses.hasMoreElements()) {
-
-                    InetAddress address =
-                            addresses.nextElement();
-
-                    if (address instanceof Inet4Address
-                            && address.isSiteLocalAddress()) {
-                        return address.getHostAddress();
-                    }
-                }
-            }
-
-        } catch (IOException ignored) {
+        if (query == null) {
+            return null;
         }
 
-        return "localhost";
+        for (String pair : query.split("&")) {
+
+            int eq = pair.indexOf('=');
+
+            if (eq < 0) {
+                continue;
+            }
+
+            String pairKey = URLDecoder.decode(
+                    pair.substring(0, eq),
+                    StandardCharsets.UTF_8
+            );
+
+            if (pairKey.equals(key)) {
+                return URLDecoder.decode(
+                        pair.substring(eq + 1),
+                        StandardCharsets.UTF_8
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private static String sanitizeFileName(String name) {
+
+        String base = Path.of(name).getFileName().toString();
+
+        return base.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 
     private static void sendText(
@@ -207,10 +280,12 @@ public class Handler {
         byte[] content =
                 text.getBytes(StandardCharsets.UTF_8);
 
-        exchange.getResponseHeaders().set(
-                "Content-Type",
-                "text/plain; charset=UTF-8"
-        );
+        if (exchange.getResponseHeaders().getFirst("Content-Type") == null) {
+            exchange.getResponseHeaders().set(
+                    "Content-Type",
+                    "text/plain; charset=UTF-8"
+            );
+        }
 
         exchange.sendResponseHeaders(
                 status,
