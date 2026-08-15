@@ -1,6 +1,12 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.WriterException;
+import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
+
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +25,7 @@ public class Handler {
         server.createContext("/style.css", Handler::style);
         server.createContext("/upload", Handler::upload);
         server.createContext("/download", Handler::download);
+        server.createContext("/qr", Handler::qr);
         server.createContext("/files", Handler::files);
         server.createContext("/info", Handler::info);
     }
@@ -156,6 +163,65 @@ public class Handler {
                 OutputStream output = exchange.getResponseBody()
         ) {
             input.transferTo(output);
+        }
+    }
+
+    private static void qr(HttpExchange exchange)
+            throws IOException {
+
+        if (!exchange.getRequestMethod().equals("GET")) {
+            sendStatus(exchange, 405);
+            return;
+        }
+
+        String rawName = queryParam(exchange, "name");
+
+        if (rawName == null || rawName.isBlank()) {
+            sendStatus(exchange, 400);
+            return;
+        }
+
+        String fileName = sanitizeFileName(rawName);
+
+        if (!Files.exists(SHARED_DIR.resolve(fileName))) {
+            sendStatus(exchange, 404);
+            return;
+        }
+
+        String downloadUrl = "http://" +
+                localLanAddress() + ":" +
+                exchange.getLocalAddress().getPort() +
+                "/download?name=" +
+                URLEncoder.encode(fileName, StandardCharsets.UTF_8);
+
+        byte[] png;
+
+        try {
+            BitMatrix matrix = new QRCodeWriter().encode(
+                    downloadUrl,
+                    BarcodeFormat.QR_CODE,
+                    240,
+                    240
+            );
+
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            MatrixToImageWriter.writeToStream(matrix, "PNG", buffer);
+            png = buffer.toByteArray();
+
+        } catch (WriterException e) {
+            sendStatus(exchange, 500);
+            return;
+        }
+
+        exchange.getResponseHeaders().set(
+                "Content-Type",
+                "image/png"
+        );
+
+        exchange.sendResponseHeaders(200, png.length);
+
+        try (OutputStream output = exchange.getResponseBody()) {
+            output.write(png);
         }
     }
 

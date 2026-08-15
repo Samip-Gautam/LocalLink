@@ -152,7 +152,12 @@
         }
 
         filesList.innerHTML = names
-            .map(name => `<a class="download-link" href="/download?name=${encodeURIComponent(name)}">${name}</a>`)
+            .map(name => `
+                <div class="file-row">
+                    <a class="download-link" href="/download?name=${encodeURIComponent(name)}">${name}</a>
+                    <a class="qr-link" href="/qr?name=${encodeURIComponent(name)}" target="_blank">QR</a>
+                </div>
+            `)
             .join('');
     }
 
